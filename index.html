@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>YParkThere</title>
+
+    <!-- leaflet css -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
+      integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI="
+      crossorigin=""
+    />
+
+    <style>
+      /* map styling */
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        margin-left: 25vw;
+        width: auto;
+        height: 100vh;
+      }
+      .coordinates {
+        position: absolute;
+        bottom: 10px;
+        right: 50%;
+      }
+
+      /* TODO */
+      /* sidebar styling */
+      .sidebar {
+        margin: 0;
+        padding: 0;
+        width: 25vw;
+        background-color: #f1f1f1;
+        position: fixed;
+        height: 100vh;
+        overflow: auto;
+        overflow-wrap: anywhere;
+      }
+
+      /* button styling */
+      .button {
+        margin-left: auto;
+        margin-right: auto;
+        padding: 16px;
+        margin: 16px;
+      }
+
+      .container {
+        margin-left: auto;
+        margin-right: auto;
+        display: block;
+      }
+
+      /* table styling */
+      table,
+      tr,
+      th {
+        margin: 2px;
+        border: 1px solid black;
+        border-collapse: collapse;
+        padding: 5px;
+      }
+
+      td {
+        margin-left: 2px;
+        padding: 5px;
+      }
+
+      /* range slider styling */
+      .slider {
+        background-color: #000000;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- TODO: COMPLETE THE SIDEBAR -->
+    <!-- SIDEBAR TEST -->
+    <!-- outer div to hold all elements -->
+    <div class="sidebar">
+      <!-- inner div to hold DOUBLE RANGE SLIDER,
+        maybe a center on map button? -->
+      <div class="container">
+        <button id="btnFindParking" class="button">Find Parking</button>
+        <legend>Nearby Regulations</legend>
+        <table id="tblRegulations"></table>
+      </div>
+    </div>
+    <!-- Leaflet Map -->
+    <div id="map"></div>
+  </body>
+</html>
+
+<!-- leaflet js -->
+<script
+  src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"
+  integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM="
+  crossorigin=""
+></script>
+
+<script>
+  //////////////
+  // map setup
+  //////////////
+  // create the map object and the default view
+  //var map = L.map('map').setView([40.7833142389411, -73.97085100212645], 13); // manhattan
+  //var map = L.map("map").fitWorld();
+  //map.locate({ setView: true, maxZoom: 16 });
+  var map = L.map("map").setView([40.7833142389411, -73.97085100212645], 19);
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution:
+      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+
+  // WMS (Web Map Service)
+  var nexrad = L.tileLayer.wms(
+    "http://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi",
+    {
+      layers: "nexrad-n0r-900913",
+      format: "image/png",
+      transparent: true,
+      attribution: "Weather data © 2012 IEM Nexrad",
+    }
+  );
+
+  //////////////////
+  // GeoJSON layer
+  //////////////////
+  var GJLayer = L.geoJSON().addTo(map);
+
+  /////////////////
+  // Date Tracker
+  /////////////////
+  var currentDateTime = new Date();
+
+  //////////////////
+  // Color Schemes
+  //////////////////
+  // enum for light/dark mode
+  var color_ScreenModes = {
+    light: 0, // light mode
+    dark: 1, // dark mode
+    light_code: "FFFFFF", // color code for light mode
+    dark_code: "000000", // color code for dark mode
+  };
+
+  // enum for parking category colors
+  var color_ParkingCategories = {
+    no_parking: 0, // no parking allowed
+    disabled: 1, // disabled parking
+    permit_only: 2, // permit only parking
+    metered: 3, // metered parking
+    available: 4, // available parking
+  };
+
+  // double array of colorschemes
+  var color_Schemes = [
+    [
+      {
+        // light mode, no parking
+        color: "#B30000", // red
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // light mode, disabled
+        color: "#00615F", // cyan //"#2E2EFF", // blue
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // light mode, permit only
+        color: "#5C5C00", // yellow //"#00615F", // cyan
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // light mode, metered
+        color: "#9B009E", // purple
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // light mode, available
+        color: "#006600", // green
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+    ],
+    [
+      {
+        // dark mode, no parking
+        color: "#FF6161", // red
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // dark mode, disabled
+        color: "#00A8A5", // cyan //"#8A8AFF", // blue
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // dark mode, permit only
+        color: "#9E9E00", // yellow //"#00A8A5", // cyan
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // dark mode, metered
+        color: "#E357FF", // purple
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+      {
+        // dark mode, available
+        color: "#00B300", // green
+        weight: 3,
+        opacity: 1.0,
+        lineCap: "butt",
+      },
+    ],
+  ];
+
+  // check user's preferred color scheme
+  var userColorScheme = checkColorScheme();
+
+  //////////////////////////
+  // regulation list setup
+  //////////////////////////
+  // select the table element
+  var tblRegulations = document.getElementById("tblRegulations");
+
+  ///////////////////////
+  // find parking setup
+  ///////////////////////
+  // select find parking element
+  var btnFindParking = document.getElementById("btnFindParking");
+
+  ////////////////////////////
+  // regulation data storage
+  ////////////////////////////
+  // storage array for curr streets
+  var arRegDataStorage = [];
+
+  ////////////////////////////
+  // countdown timer storage
+  ////////////////////////////
+  var arCountdownTimersIDs = [];
+
+  //////////////////
+  // eventhandling
+  //////////////////
+  btnFindParking.onclick = function () {
+    // capture the map center
+    let latlng = map.getCenter();
+
+    // fetchNearby using latlng
+    fetchNearby(latlng.lat, latlng.lng);
+  };
+
+  var popup = L.popup();
+
+  // onMapClick
+  function onMapClick(e) {
+    // add a circle at click point
+    L.circle(e.latlng, 1).addTo(map);
+
+    // fetch nearby regulations
+    fetchNearby(e.latlng.lat, e.latlng.lng);
+  }
+
+  // add click event
+  map.on("click", onMapClick);
+
+  // onLocationFound
+  function onLocationFound(e) {
+    // TODO: ADD FUNCTIONALITY FOR GEONEAR BASED ON LOCATION (BUTTON?)
+    //fetchNearby(e.latlng.lat, e.latlng.lng);
+  }
+
+  // add location found event
+  map.on("locationfound", onLocationFound);
+
+  // onLocationError
+  function onLocationError(e) {
+    alert(e.message);
+  }
+
+  // add location error event
+  map.on("locationerror", onLocationError);
+
+  /////////////////////
+  // helper functions
+  /////////////////////
+  // name: fetchNearby
+  // desc: send GET request for regulations based on lat, lng
+  async function fetchNearby(passedLat, passedLng) {
+    // attempt to fetch regulations
+    try {
+      let res = await fetch(
+        "http://localhost:3000/streets?lat=" + passedLat + "&lng=" + passedLng
+      );
+
+      // on success
+      if (res.status === 200) {
+        // capture the regulations
+        let data = await res.json();
+
+        // clear the storage array
+        arRegDataStorage = [];
+
+        // capture requested data for referencing
+        arRegDataStorage = data;
+
+        // populateLayer with retrieved data
+        populateLayer(data);
+
+        // populate regulationTable
+        populateTable(data);
+
+        // on failure
+      } else {
+        // log out client-side error information
+        console.log("Status: " + res.status + "\nError: " + res.statusText);
+      }
+
+      // on server error
+    } catch (error) {
+      // log out server-side error
+      console.log(error);
+    }
+  }
+
+  // name: populateLayer
+  // desc: add GeoJSON features to the map
+  function populateLayer(data) {
+    // clear previous layer before populating new one
+    clearLayer();
+
+    // temp variables
+    let street_iterator = 0, // iterator for streets
+      regs_iterator = 0, // iterator for regulations
+      num_streets = data.length, // amount of streets passed in
+      num_regs = 0, // amount of regulations per street
+      current_prop = null, // current properties in loop
+      current_geo = null, // current geometry in loop
+      current_reg = null; // current regulation in loop
+
+    // loop through streets
+    while (street_iterator < num_streets) {
+      // setup num_regs
+      num_regs = data[street_iterator].feature.properties.regulations.length;
+
+      // loop through regulations
+      while (regs_iterator < num_regs) {
+        // capture the current regulation
+        current_reg =
+          data[street_iterator].feature.properties.regulations[regs_iterator];
+
+        // capture current properties
+        current_prop = current_reg.feature.properties;
+
+        // capture current geometry
+        current_geo = current_reg.feature.geometry;
+
+        // add passed in GeoJSON to our layer
+        GJLayer.addData({
+          // construct feature in realtime
+          type: "Feature",
+          properties: current_prop, // use current properties
+          geometry: current_geo, // use current geometry
+        });
+
+        // iterate
+        regs_iterator++;
+      }
+      // reset
+      regs_iterator = 0;
+
+      // update iterator
+      street_iterator++;
+    }
+
+    // call styling of GJLayer
+    styleGJLayer();
+  }
+
+  // name: populateTable
+  // desc: add fetched data to the sidebar table
+  function populateTable(data) {
+    // temp variables
+    let street_iterator = 0, // iterator for streets
+      num_streets = data.length, // amount of streets passed in
+      regs_iterator = 0, // iterator for regulations
+      num_regs = 0, // amount of regulations per street
+      current_reg = null, // current regulation
+      current_prop = null, // current properties in loop
+      currentStart = null, // start time of feature
+      currentEnd = null, // end time of feature
+      convertedStart = null, // converted start to minutes
+      convertedEnd = null, // converted end to minutes
+      num_total_regs = 0; // amount of total regulations displayed
+
+    /////////////////////////////////
+    // reset variables and elements
+    /////////////////////////////////
+    // countdown timers
+    clearAllTimers();
+
+    // clear array
+    arCountdownTimersIDs = [];
+
+    // clear the table
+    tblRegulations.innerHTML = "";
+
+    // add headers to the table
+    tblRegulations.innerHTML +=
+      "<tr><th>Table Label</th><th>Type</th><th>Start Time</th><th>End Time</th><th>Status</th></tr>";
+
+    // loop per street
+    while (street_iterator < num_streets) {
+      // set up num_regs
+      num_regs = data[street_iterator].feature.properties.regulations.length;
+
+      // loop per regulation
+      while (regs_iterator < num_regs) {
+        // capture current regulation
+        current_reg =
+          data[street_iterator].feature.properties.regulations[regs_iterator];
+
+        // capture current feature
+        current_prop = current_reg.feature.properties;
+
+        // capture time data
+        currentStart = new Date(current_prop.active_hours[0]);
+        currentEnd = new Date(current_prop.active_hours[1]);
+
+        // append to the table with the regulation data
+        // category, start_time, end_time, countdown
+        tblRegulations.innerHTML +=
+          "<tr><td>[ " +
+          street_iterator + " | " +
+          regs_iterator + 
+          " ]</td><td>" +
+          current_prop.category +
+          "</td><td>" +
+          currentStart.toLocaleTimeString() +
+          "</td><td>" +
+          currentEnd.toLocaleTimeString() +
+          "</td><td><p id=countdown_" +
+          street_iterator +
+          "_" +
+          regs_iterator +
+          ">Loading...</p></td>";
+
+        // append our timer IDs
+        arCountdownTimersIDs.push([
+          "countdown_" + street_iterator + "_" + regs_iterator,
+          setInterval(
+            updateCountdownTimer,
+            1000,
+            street_iterator,
+            regs_iterator,
+            num_total_regs
+          ),
+        ]);
+
+        // iterate
+        regs_iterator++;
+        num_total_regs++;
+      }
+      // reset
+      regs_iterator = 0;
+
+      // iterate
+      street_iterator++;
+    }
+  }
+
+  // name: clearLayer
+  // desc: remove all GeoJSON features from the map
+  function clearLayer() {
+    // remove the layer from the map
+    GJLayer.remove();
+
+    // set our layer to a new GeoJSON layer
+    GJLayer = L.geoJSON().addTo(map);
+  }
+
+  // name: resetDateTracker
+  // desc: sets the date tracker to the current date
+  function SyncDateTime() {
+    currentDateTime = new Date();
+  }
+
+  // name: styleGJLayer
+  // desc: sets the style of each feature
+  function styleGJLayer() {
+    let properties = null; // use to hold properties of current feature
+    let startDatetime = null, // Date object for active start time
+      endDatetime = null; // Date object for active end time
+
+    // update datetime tracker
+    SyncDateTime();
+
+    // capture current Date information
+    let day_of_week = currentDateTime.getDay(); // current day of the week
+    let current_hour = currentDateTime.getHours(); // current hour of the day
+    let current_minute = currentDateTime.getMinutes(); // current minute of the day
+    let start_hour = null, // start hour of feature
+      start_minute = null, // start minute of feature
+      end_hour = null, // end hour of feature
+      end_minute = null; // end minute of feature
+
+    // style each feature
+    GJLayer.eachLayer(function (layer) {
+      // capture current properties
+      properties = layer.feature.properties;
+
+      // check if regulation is active today
+      if (properties.active_days[day_of_week]) {
+        // capture current feature Date information
+        startDatetime = new Date(properties.active_hours[0]);
+        endDatetime = new Date(properties.active_hours[1]);
+
+        // check if within the regulation timeframe
+        // (if all day timeframe) || (if variables' timeframe)
+        if (
+          (startDatetime.getHours() == endDatetime.getHours() &&
+            startDatetime.getMinutes() == endDatetime.getMinutes()) ||
+          (current_hour >= startDatetime.getHours() &&
+            current_hour <= endDatetime.getHours() &&
+            current_minute >= startDatetime.getMinutes() &&
+            current_minute <= endDatetime.getMinutes())
+        ) {
+          // check the category
+          switch (properties.category) {
+            case "No Parking": // no parking
+              layer.setStyle(
+                color_Schemes[userColorScheme][
+                  color_ParkingCategories.no_parking
+                ]
+              );
+              break;
+
+            case "Disabled": // disabled
+              layer.setStyle(
+                color_Schemes[userColorScheme][color_ParkingCategories.disabled]
+              );
+              break;
+
+            case "Permit Only": // permit
+              layer.setStyle(
+                color_Schemes[userColorScheme][
+                  color_ParkingCategories.permit_only
+                ]
+              );
+              break;
+
+            case "Metered": // metered
+              layer.setStyle(
+                color_Schemes[userColorScheme][color_ParkingCategories.metered]
+              );
+              break;
+          }
+        } else {
+          // set style to available
+          layer.setStyle(
+            color_Schemes[userColorScheme][color_ParkingCategories.available]
+          );
+        }
+      } else {
+        // set style to available
+        layer.setStyle(
+          color_Schemes[userColorScheme][color_ParkingCategories.available]
+        );
+      }
+    });
+  }
+
+  // name: checkColorScheme
+  // desc: checks the users preferred color scheme
+  function checkColorScheme() {
+    // check for no preference
+    let matched = window.matchMedia(
+      "(prefers-color-scheme: no-preference)"
+    ).matches;
+
+    // if a match, return light mode as default
+    if (matched) return color_ScreenModes.light;
+
+    // check for light mode
+    matched = window.matchMedia("(prefers-color-scheme: light)").matches;
+
+    // if a match, return light mode as preferred
+    if (matched) return color_ScreenModes.light;
+
+    // check for dark mode
+    matched = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    // if matched, return dark mode as preferred
+    if (matched) return color_ScreenModes.dark;
+  }
+
+  // name: updateCountdownTimer
+  // desc: updates respective <p> tag
+  function updateCountdownTimer(street_id, reg_id, timer_id) {
+    // capture start time and end time
+    let start_time = new Date(
+      arRegDataStorage[street_id].feature.properties.regulations[
+        reg_id
+      ].feature.properties.active_hours[0]
+    );
+    let end_time = new Date(
+      arRegDataStorage[street_id].feature.properties.regulations[
+        reg_id
+      ].feature.properties.active_hours[1]
+    );
+
+    // capture the element using id
+    let countdown = document.getElementById(
+      "countdown_" + street_id + "_" + reg_id
+    );
+
+    // check if all day regulation
+    if (
+      start_time.getHours() == end_time.getHours() &&
+      start_time.getMinutes() == end_time.getMinutes()
+    ) {
+      // remove timer
+      clearCountdownTimer(timer_id);
+
+      // set <p> to "All day"
+      countdown.innerHTML = "All day";
+      return;
+    }
+
+    // update currentDateTime
+    SyncDateTime();
+
+    // convert our times into minutes
+    let currHours = currentDateTime.getHours(),
+      currMinutes = currentDateTime.getMinutes(),
+      currConverted = currHours * 60 + currMinutes,
+      startHours = start_time.getHours(),
+      startMinutes = start_time.getMinutes(),
+      startConverted = startHours * 60 + startMinutes,
+      endHours = end_time.getHours(),
+      endMinutes = end_time.getMinutes(),
+      endConverted = endHours * 60 + endMinutes;
+
+    // if (now < start_time) => set countdown until start_time
+    //if (start_diff_converted < 0) {
+    if (currConverted < startConverted) {
+      let start_diff_hours = startHours - currHours,
+        start_diff_mins = startMinutes - currMinutes;
+
+      // check for negative minutes
+      if (start_diff_mins < 0) start_diff_mins += 60; // offset
+
+      // append to <p>
+      countdown.innerHTML =
+        start_diff_hours + "h " + start_diff_mins + "m until start";
+      return;
+    }
+
+    // if (now > start_time && now < end_time) => set countdown until end_time
+    if (currConverted > startConverted && currConverted < endConverted) {
+      let end_diff_hours = endHours - currConverted,
+        end_diff_mins = endMinutes - currConverted;
+
+      // check for negative minutes
+      if (end_diff_mins < 0) end_diff_mins += 60; // offset
+
+      // append to <p>
+      countdown.innerHTML =
+        end_diff_hours + "h " + end_diff_mins + "m until end";
+      return;
+    }
+
+    // TODO: ADJUST THIS CONDITION BASED ON CATEGORY
+    // if (now > end_time) => set <p> to "Available"
+    if (currConverted > endConverted) {
+      if (
+        arRegDataStorage[street_id].feature.properties.regulations[reg_id]
+          .feature.properties.is_prohibiting
+      )
+        // append to <p>
+        countdown.innerHTML = "Available";
+      // append to <p>
+      else countdown.innerHTML = "Unavailable";
+
+      // remove the timer
+      clearCountdownTimer(timer_id);
+      return;
+    }
+  }
+
+  // name: clearCountdownTimer
+  // desc: clears the timer based on id param
+  function clearCountdownTimer(timer_id) {
+    // call clearInterval
+    clearInterval(arCountdownTimersIDs[timer_id][1]);
+
+    // pop from storage array
+    arCountdownTimersIDs[timer_id].pop();
+  }
+
+  // name: clearAllTimers
+  // desc: loops through curr timers and runs clearInterval
+  function clearAllTimers() {
+    // iterator
+    let timer_iterator = 0;
+
+    // loop through array
+    while (timer_iterator < arCountdownTimersIDs.length) {
+      // check if there is an active interval
+      if (arCountdownTimersIDs[timer_iterator].length == 2) {
+        // call clearInterval
+        clearInterval(arCountdownTimersIDs[timer_iterator][1]);
+
+        // pop from storage array
+        arCountdownTimersIDs[timer_iterator].pop();
+      }
+
+      // iterate
+      timer_iterator++;
+    }
+  }
+</script>
